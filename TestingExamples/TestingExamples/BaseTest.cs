@@ -1,20 +1,21 @@
-﻿using NUnit.Framework;
+﻿using Common;
+using NUnit.Framework;
 using RestSharp;
 using RestSharp.Authenticators;
 using Services;
 
 namespace ApiTestingExamples;
 
-public class BaseTest
+public class BaseTest : CommonBaseTest
 {
     protected RestClient AuthorizedRestClient;
     protected RestClient UnAuthorizedRestClient;
 
     protected readonly string ApiBaseUrl;
 
-    public BaseTest()
+    public BaseTest() : base(TestProjects.ApiTesting)
     {
-        ApiBaseUrl = "";
+        ApiBaseUrl = GetConfigurationValue("ApiTesting:BaseUrl", true);
     }
 
     [OneTimeSetUp]
