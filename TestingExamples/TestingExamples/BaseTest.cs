@@ -9,7 +9,7 @@ namespace ApiTestingExamples;
 public class BaseTest : CommonBaseTest
 {
     protected RestClient AuthorizedRestClient;
-    protected RestClient UnAuthorizedRestClient;
+    protected RestClient UnauthorizedRestClient;
 
     protected readonly string ApiBaseUrl;
 
@@ -21,7 +21,7 @@ public class BaseTest : CommonBaseTest
     [OneTimeSetUp]
     public async Task SetupTests()
     {
-        UnAuthorizedRestClient = new RestClient(ApiBaseUrl);
+        UnauthorizedRestClient = new RestClient(ApiBaseUrl);
         AuthorizedRestClient = new RestClient(ApiBaseUrl) { Authenticator =  new JwtAuthenticator(new AuthService().GetAuthToken())};
     }
 }

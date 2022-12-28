@@ -1,28 +1,28 @@
-﻿using NUnit.Framework;
-using RestSharp;
-using System.Net;
+﻿using System.Net;
 using FluentAssertions;
+using NUnit.Framework;
+using RestSharp;
 
-namespace ApiTestingExamples;
+namespace ApiTestingExamples.RequestTests;
 
-public class NegativeTesting : BaseTest
+public class HappyPathTesting : BaseTest
 {
     [Test]
     [Property("Test", "TestNumber")]
-    public async Task HappyPathTest()
+    public async Task HappyPathTesting_ValidDateTime_ReturnsOk()
     {
         await ApiRequestTest("testPath",
-            "nonExistentUser",
-            HttpStatusCode.BadRequest);
+            DateTime.Now,
+            HttpStatusCode.OK);
     }
 
-    private async Task ApiRequestTest(string updatableInfo, string username, HttpStatusCode validationCode)
+    private async Task ApiRequestTest(string updatableInfo, DateTime queryDate, HttpStatusCode validationCode)
     {
         // ARRANGE
         var request = new RestRequest($"/apiEndpoint/{updatableInfo}")
             .AddJsonBody(new
             {
-                Username = username
+                Date = queryDate
             });
 
         // ACT
