@@ -8,6 +8,9 @@
 
   <ItemGroup>
     <Folder Include="Interfaces\" />
+    <Folder Include="Models\" />
+    <Folder Include="DataModels\" />
+    <Folder Include="RequestModels\" />
   </ItemGroup>
 
   <ItemGroup>
