@@ -1,4 +1,4 @@
-﻿namespace TestingExamples;
+﻿namespace ApiTestingExamples;
 
 public class Class1
 {
