@@ -1,7 +1,6 @@
-﻿namespace TestingExamples
-{
-    public class Class1
-    {
+﻿namespace TestingExamples;
 
-    }
+public class Class1
+{
+
 }
