@@ -14,7 +14,7 @@ public class LoadGenerator
     public void GenerateLoad(int minutesToRun, int eventsPerSecond)
     {
         Console.WriteLine();
-        Console.WriteLine($"Generating load for {minutesToRun}min at {eventsPerSecond}event/s.");
+        Console.WriteLine($"Generating load for {minutesToRun} min at {eventsPerSecond} event/s.");
         Console.WriteLine();
 
         _startTime = DateTime.Now;
