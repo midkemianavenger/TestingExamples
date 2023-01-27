@@ -6,11 +6,6 @@ public class LoadGenerator
     private DateTime _endTime;
     private long _totalLoadGenerated;
 
-    public LoadGenerator()
-    {
-
-    }
-
     public void GenerateLoad(int minutesToRun, int eventsPerSecond)
     {
         Console.WriteLine();
