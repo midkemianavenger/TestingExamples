@@ -35,9 +35,9 @@ public class ResponseBodyTesting : BaseTest
         response.Should().NotBeNull();
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        response.Data?.StructuredData.Any(x => x.Id == dataIndicator).Should().BeTrue();
-        response.Data?.StructuredData.Any(x => x.Name == dataName).Should().BeTrue();
-        response.Data?.StructuredData.Any(x => x.EndDate == endDateTime).Should().BeTrue();
-        response.Data?.StructuredData.Any(x => x.StartDate == endDateTime.AddMinutes(-15)).Should().BeTrue();
+        response.Data?.StructuredData.Select(x=>x.Id).Should().Equal(dataIndicator);
+        response.Data?.StructuredData.Select(x => x.Name).Should().BeEquivalentTo(dataName);
+        response.Data?.StructuredData.Select(x => x.EndDate).Should().Equal(endDateTime);
+        response.Data?.StructuredData.Select(x => x.StartDate).Should().Equal(endDateTime.AddMinutes(-15));
     }
 }
