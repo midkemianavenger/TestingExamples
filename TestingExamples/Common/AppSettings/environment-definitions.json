@@ -1,0 +1,8 @@
+{
+  "ApiTesting": {
+    "env-dev": "dev",
+    "env-test": "test",
+    "env-staging": "staging",
+    "env-prod": "prod"
+  }
+}
