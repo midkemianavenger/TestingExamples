@@ -39,6 +39,7 @@ public abstract class CommonBaseTest
         _configuration = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile($"AppSettings/appsettings.{_runEnvironment.ToLowerInvariant()}.json")
+            .AddUserSecrets(System.Reflection.Assembly.GetExecutingAssembly(), true)
             .Build();
     }
 
