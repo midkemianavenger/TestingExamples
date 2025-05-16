@@ -1,0 +1,219 @@
+name: Backend Automation Tests
+run-name: Backend Test Run for ${{ github.head_ref || github.ref_name }} against Environment ${{ inputs.environment || 'env-dev' }} initiated by @${{ github.actor }}
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:  
+      environment:
+        description: "Environment"
+        required: true
+        default: "env-dev"
+        type: choice
+        options:
+          - env-dev
+          - env-staging
+          - env-prod
+      reporting-is-on:
+        description: 'Reporting Enabled'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - true
+        - false
+  schedule:
+    - cron: '15 7 * * *'
+
+jobs:
+  backend_tests:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'env-dev' }}
+    
+    steps:
+    - name: Set Environment Variables from Vars
+      shell: pwsh
+      run: |
+        $vars = @"
+        ${{ toJson(vars) }}
+        "@
+
+        $jsonvars = $vars | ConvertFrom-Json
+        foreach($object_properties in $jsonvars.PsObject.Properties)
+        {
+            echo $object_properties.Name.Replace("_","__")
+            echo $object_properties.Value
+
+            echo "$($object_properties.Name.Replace('_','__'))=$($object_properties.Value)" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+        }
+
+    - name: Set Environment Secrets from Secrets
+      shell: pwsh
+      run: |
+        $secrets = @"
+        ${{ toJson(secrets) }}
+        "@
+
+        $jsonsecrets = $secrets | ConvertFrom-Json
+        foreach($object_properties in $jsonsecrets.PsObject.Properties)
+        {
+            echo $object_properties.Name.Replace("_","__")
+            echo $object_properties.Value
+
+            echo "$($object_properties.Name.Replace('_','__'))=$($object_properties.Value)" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+        }
+
+    - name: Check env
+      run: printenv
+
+    - uses: actions/checkout@v4.1.7
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4.0.0
+      with:
+          cache: true
+          cache-dependency-path: "./TestingExamples/packages.lock.json"
+          global-json-file: "./global.json"
+
+    - name: Restore dependencies
+      run: dotnet restore --locked-mode -s https://api.nuget.org/v3/index.json
+
+    - name: Build
+      run: dotnet build --no-restore
+
+    - name: Test
+      run: dotnet test --test-adapter-path ./bin/Debug/net8.0/ --filter "TestCategory!=LongDuration&TestCategory!=LoadTests&TestCategory!=Regression&TestCategory!=ThirdPartyApis" --logger "junit;LogFilePath=./bin/Debug/net8.0/junit-results.xml"
+      continue-on-error: true
+      working-directory: ./TestingExamples
+
+    - name: Test Report
+      uses: dorny/test-reporter@324c51f0cea38b773386b2e7623fda46e826c895
+      if: success() || failure()
+      with:
+        name: Backend Automation Tests
+        path: ./TestingExamples/bin/Debug/net8.0/junit-results.xml
+        fail-on-error: 'false'
+        list-tests: 'failed'
+        reporter: java-junit
+
+    - name: Ensure file system is synchronized (optional)
+      run: sync
+
+    - name: Display detailed artifact/vars information
+      if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+      run: |
+        pwd
+        find ./TestingExamples -type f
+        ls -la ./TestingExamples/bin/Debug/net8.0/
+        if [ -f ./TestingExamples/bin/Debug/net8.0/junit-results.xml ]; then
+          echo "JUnit results file found."
+        else
+          echo "JUnit results file NOT found."
+        fi
+
+    - name: Upload Allure Results
+      uses: actions/upload-artifact@v4.0.0
+      if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+      with:
+        name: allure-results
+        path: ./TestingExamples/bin/Debug/net8.0/allure-results/
+        if-no-files-found: error
+        retention-days: 20
+
+    - name: Upload JUnit Results
+      uses: actions/upload-artifact@v4.0.0
+      if: ${{ !cancelled() }}
+      with:
+        name: junit-results
+        path: ./TestingExamples/bin/Debug/net8.0/junit-results.xml
+        if-no-files-found: error
+        retention-days: 1
+
+  testrail-reporting:
+    needs: backend_tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download Build Artifact
+      uses: actions/download-artifact@v4.1.3
+      if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+      with:
+        name: junit-results
+        path: ./junit-results
+
+    - name: Python setup
+      if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+      uses: actions/setup-python@v5.1.0
+      with:
+        python-version: '3.x' 
+
+    - name: Download TestRail CLI
+      if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+      run: pip install trcli
+
+    - name: TestRail CLI upload results
+      if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+      run: |
+        trcli -y \
+          -h ${{ vars.TESTRAIL_URL }} \
+          --project "OHLQ" \
+          --username ${{ vars.TESTRAIL_USERNAME }} \
+          --key ${{ secrets.TESTRAIL_API_KEY }} \
+          parse_junit \
+          --title "Backend Automated Test Run | Build ${{ github.run_id }}" \
+          --run-description ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} \
+          -f "./junit-results/junit-results.xml" \
+          --allow-ms \
+          --close-run
+
+  allure-reporting:
+    needs: backend_tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4.1.3
+        if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+        with:
+          name: allure-results
+          path: ./allure-results
+
+      - name: Get Allure history (optional)
+        uses: actions/checkout@v4.1.1
+        if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Generate report
+        uses: simple-elf/allure-report-action@58e6590adf6d8f196a0d771bf8a00e6921086a62
+        if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+        id: allure-report
+        with:
+          allure_results: allure-results
+          gh_pages: gh-pages
+          allure_report: allure-report
+          allure_history: allure-history
+          keep_reports: 20
+
+      - name: Deploy report to Github Pages
+        if: ${{ (inputs.reporting-is-on || 'true') == 'true' && !cancelled() }}
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        with:
+          PERSONAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH_BRANCH: gh-pages
+          PUBLISH_DIR: allure-history
+
+  slack-reporting:
+    needs: backend_tests
+    uses: ./.github/workflows/test-report-to-slack.yml
+    with:
+      junit-results-artifact-name: junit-results
+      junit-results-file-name: './junit-results/junit-results.xml'
+      slack-channel: ${{ vars.SLACK_CHANNEL }}
+      test-run-complete-message: ":ohlq: *Backend* Test Automation Results"
+    secrets:
+      SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }} 

@@ -1,0 +1,136 @@
+name: Test Report to Slack
+
+on:
+  workflow_call:
+    inputs:
+      junit-results-artifact-name:
+        required: true
+        type: string
+      junit-results-file-name:
+        required: true
+        type: string
+      slack-channel:
+        required: true
+        type: string
+      test-run-complete-message:
+        required: true
+        type: string
+    secrets:
+      SLACK_TOKEN:
+        required: true
+
+jobs:
+  report-to-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download JUnit Results
+        uses: actions/download-artifact@v4.1.3
+        with:
+          name: ${{ inputs.junit-results-artifact-name }}
+          path: ./junit-results
+
+      - name: Parse JUnit Results
+        id: junit-parser
+        shell: pwsh
+        run: |
+            # Load the System.Web assembly for HtmlDecode
+            Add-Type -AssemblyName System.Web
+
+            # Read the XML file
+            $xmlContent = Get-Content -Path "${{ inputs.junit-results-file-name }}" -Raw
+
+            # Parse the XML
+            $xmlDoc = [xml]$xmlContent
+            $testsuite = $xmlDoc.testsuites.testsuite
+
+            # Extract test results
+            $total = [int]$testsuite.tests
+            $failures = [int]$testsuite.failures
+            $errors = [int]$testsuite.errors
+            $failed = $failures + $errors
+            $passed = $total - $failed
+
+            # Parse failed test cases
+            $failedTests = @()
+            foreach ($testcase in $testsuite.testcase) {
+                if ($testcase.failure) {
+                    $name = $testcase.name
+                    $message = [System.Web.HttpUtility]::HtmlDecode($testcase.failure.message)
+                    $cleanMessage = ($message -split "`n" | Where-Object { $_ -notmatch 'at ' } | Where-Object { $_.Trim() } | ForEach-Object { "> $_" }) -join "`n"
+                    $failedTests += @{
+                        name = $name
+                        message = $cleanMessage
+                    }
+                }
+            }
+
+            # Format failures
+            $failuresFormatted = ""
+            foreach ($test in $failedTests) {
+                $testName = $test.name
+                $messages = $test.message
+                $failuresFormatted += "*$testName*`n$messages`n`n"
+            }
+
+            # Set outputs
+            "passed=$passed" >> $env:GITHUB_OUTPUT
+            "failed=$failed" >> $env:GITHUB_OUTPUT
+            "total=$total" >> $env:GITHUB_OUTPUT
+            "failures_formatted<<EOF" >> $env:GITHUB_OUTPUT
+            $failuresFormatted >> $env:GITHUB_OUTPUT
+            "EOF" >> $env:GITHUB_OUTPUT
+
+      - name: Slack Summary Message
+        id: slack-summary
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ inputs.slack-channel }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "${{ inputs.test-run-complete-message }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":robot_face: *${{ steps.junit-parser.outputs.total }}* Tests\n${{ steps.junit-parser.outputs.passed != '0' && format(':white_check_mark: *{0}* Passed\n', steps.junit-parser.outputs.passed) || '' }}${{ steps.junit-parser.outputs.failed != '0' && format(':no-not-good-dame: *{0}* Failed', steps.junit-parser.outputs.failed) || '' }}"
+                  }
+                }
+              ],
+              "attachments": [
+                {
+                  "color": "${{ steps.junit-parser.outputs.failed == '0' && '#36a64f' || '#dc3545' }}",
+                  "blocks": [
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "${{ steps.junit-parser.outputs.failed == '0' && ':checkmark_green: All tests passed successfully!' || ':x: Some tests failed - see thread for details' }}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+
+      - name: Slack Details Thread
+        if: ${{ steps.junit-parser.outputs.failed != '0' }}
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_TOKEN }}
+          payload: |
+            {
+                "channel": "${{ inputs.slack-channel }}",
+                "thread_ts": ${{ fromJson(steps.slack-summary.outputs.response).ts }},
+                "text": ${{ toJSON(format('*Failed Tests Details:*
+            {0}', steps.junit-parser.outputs.failures_formatted)) }}
+            }
